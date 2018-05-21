@@ -3,18 +3,16 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 
-# If root, ensure that --user-data-dir is specified
-ARGS=$@
+# If root, ensure that --user-data-dir or --file-write is specified
 if [ "$(id -u)" = "0" ]; then
-	while test $# -gt 0
+	for i in $@
 	do
-		if [[ $1 == --user-data-dir=* ]]; then
-			DATA_DIR_SET=1
+		if [[ $i == --user-data-dir || $i == --user-data-dir=* || $i == --file-write ]]; then
+			CAN_LAUNCH_AS_ROOT=1
 		fi
-		shift
 	done
-	if [ -z $DATA_DIR_SET ]; then
-		echo "It is recommended to start vscode as a normal user. To run as root, you must specify an alternate user data directory with the --user-data-dir argument." 1>&2
+	if [ -z $CAN_LAUNCH_AS_ROOT ]; then
+		echo "You are trying to start vscode as a super user which is not recommended. If you really want to, you must specify an alternate user data directory using the --user-data-dir argument." 1>&2
 		exit 1
 	fi
 fi
@@ -34,5 +32,5 @@ fi
 
 ELECTRON="$VSCODE_PATH/@@NAME@@"
 CLI="$VSCODE_PATH/resources/app/out/cli.js"
-ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$CLI" $ARGS
+ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$CLI" "$@"
 exit $?

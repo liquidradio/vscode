@@ -7,6 +7,7 @@
 import * as strings from 'vs/base/common/strings';
 import { Range } from 'vs/editor/common/core/range';
 import { CharacterPair } from 'vs/editor/common/modes/languageConfiguration';
+import { LanguageIdentifier } from 'vs/editor/common/modes';
 
 interface ISimpleInternalBracket {
 	open: string;
@@ -16,14 +17,14 @@ interface ISimpleInternalBracket {
 export class RichEditBracket {
 	_richEditBracketBrand: void;
 
-	readonly modeId: string;
+	readonly languageIdentifier: LanguageIdentifier;
 	readonly open: string;
 	readonly close: string;
 	readonly forwardRegex: RegExp;
 	readonly reversedRegex: RegExp;
 
-	constructor(modeId: string, open: string, close: string, forwardRegex: RegExp, reversedRegex: RegExp) {
-		this.modeId = modeId;
+	constructor(languageIdentifier: LanguageIdentifier, open: string, close: string, forwardRegex: RegExp, reversedRegex: RegExp) {
+		this.languageIdentifier = languageIdentifier;
 		this.open = open;
 		this.close = close;
 		this.forwardRegex = forwardRegex;
@@ -41,10 +42,10 @@ export class RichEditBrackets {
 	public readonly textIsBracket: { [text: string]: RichEditBracket; };
 	public readonly textIsOpenBracket: { [text: string]: boolean; };
 
-	constructor(modeId: string, brackets: CharacterPair[]) {
+	constructor(languageIdentifier: LanguageIdentifier, brackets: CharacterPair[]) {
 		this.brackets = brackets.map((b) => {
 			return new RichEditBracket(
-				modeId,
+				languageIdentifier,
 				b[0],
 				b[1],
 				getRegexForBracketPair({ open: b[0], close: b[1] }),
@@ -81,21 +82,21 @@ function once<T, R>(keyFn: (input: T) => string, computeFn: (input: T) => R): (i
 	};
 }
 
-var getRegexForBracketPair = once<ISimpleInternalBracket, RegExp>(
+const getRegexForBracketPair = once<ISimpleInternalBracket, RegExp>(
 	(input) => `${input.open};${input.close}`,
 	(input) => {
-		return createOrRegex([input.open, input.close]);
+		return createBracketOrRegExp([input.open, input.close]);
 	}
 );
 
-var getReversedRegexForBracketPair = once<ISimpleInternalBracket, RegExp>(
+const getReversedRegexForBracketPair = once<ISimpleInternalBracket, RegExp>(
 	(input) => `${input.open};${input.close}`,
 	(input) => {
-		return createOrRegex([toReversedString(input.open), toReversedString(input.close)]);
+		return createBracketOrRegExp([toReversedString(input.open), toReversedString(input.close)]);
 	}
 );
 
-var getRegexForBrackets = once<ISimpleInternalBracket[], RegExp>(
+const getRegexForBrackets = once<ISimpleInternalBracket[], RegExp>(
 	(input) => input.map(b => `${b.open};${b.close}`).join(';'),
 	(input) => {
 		let pieces: string[] = [];
@@ -103,11 +104,11 @@ var getRegexForBrackets = once<ISimpleInternalBracket[], RegExp>(
 			pieces.push(b.open);
 			pieces.push(b.close);
 		});
-		return createOrRegex(pieces);
+		return createBracketOrRegExp(pieces);
 	}
 );
 
-var getReversedRegexForBrackets = once<ISimpleInternalBracket[], RegExp>(
+const getReversedRegexForBrackets = once<ISimpleInternalBracket[], RegExp>(
 	(input) => input.map(b => `${b.open};${b.close}`).join(';'),
 	(input) => {
 		let pieces: string[] = [];
@@ -115,12 +116,19 @@ var getReversedRegexForBrackets = once<ISimpleInternalBracket[], RegExp>(
 			pieces.push(toReversedString(b.open));
 			pieces.push(toReversedString(b.close));
 		});
-		return createOrRegex(pieces);
+		return createBracketOrRegExp(pieces);
 	}
 );
 
-function createOrRegex(pieces: string[]): RegExp {
-	let regexStr = `(${pieces.map(strings.escapeRegExpCharacters).join(')|(')})`;
+function prepareBracketForRegExp(str: string): string {
+	// This bracket pair uses letters like e.g. "begin" - "end"
+	const insertWordBoundaries = (/^[\w]+$/.test(str));
+	str = strings.escapeRegExpCharacters(str);
+	return (insertWordBoundaries ? `\\b${str}\\b` : str);
+}
+
+function createBracketOrRegExp(pieces: string[]): RegExp {
+	let regexStr = `(${pieces.map(prepareBracketForRegExp).join(')|(')})`;
 	return strings.createRegExp(regexStr, true);
 }
 
@@ -178,6 +186,9 @@ export class BracketsUtils {
 
 		let matchOffset = m.index;
 		let matchLength = m[0].length;
+		if (matchLength === 0) {
+			return null;
+		}
 		let absoluteMatchOffset = offset + matchOffset;
 
 		return new Range(lineNumber, absoluteMatchOffset + 1, lineNumber, absoluteMatchOffset + 1 + matchLength);

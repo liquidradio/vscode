@@ -6,6 +6,7 @@
 import fs = require('fs');
 import ts = require('typescript');
 import path = require('path');
+const tsfmt = require('../../tsfmt.json');
 
 var util = require('gulp-util');
 function log(message: any, ...rest: any[]): void {
@@ -23,26 +24,24 @@ function logErr(message: any, ...rest: any[]): void {
 	util.log(util.colors.red('[monaco.d.ts]'), message, ...rest);
 }
 
-function moduleIdToPath(out:string, moduleId:string): string {
+function moduleIdToPath(out: string, moduleId: string): string {
 	if (/\.d\.ts/.test(moduleId)) {
 		return path.join(SRC, moduleId);
 	}
 	return path.join(OUT_ROOT, out, moduleId) + '.d.ts';
 }
 
-let SOURCE_FILE_MAP: {[moduleId:string]:ts.SourceFile;} = {};
-function getSourceFile(out:string, moduleId:string): ts.SourceFile {
+let SOURCE_FILE_MAP: { [moduleId: string]: ts.SourceFile; } = {};
+function getSourceFile(out: string, inputFiles: { [file: string]: string; }, moduleId: string): ts.SourceFile {
 	if (!SOURCE_FILE_MAP[moduleId]) {
-		let filePath = moduleIdToPath(out, moduleId);
+		let filePath = path.normalize(moduleIdToPath(out, moduleId));
 
-		let fileContents: string;
-		try {
-			fileContents = fs.readFileSync(filePath).toString();
-		} catch (err) {
-			logErr('CANNOT FIND FILE ' + filePath);
+		if (!inputFiles.hasOwnProperty(filePath)) {
+			logErr('CANNOT FIND FILE ' + filePath + '. YOU MIGHT NEED TO RESTART gulp');
 			return null;
 		}
 
+		let fileContents = inputFiles[filePath];
 		let sourceFile = ts.createSourceFile(filePath, fileContents, ts.ScriptTarget.ES5);
 
 		SOURCE_FILE_MAP[moduleId] = sourceFile;
@@ -54,7 +53,7 @@ function getSourceFile(out:string, moduleId:string): ts.SourceFile {
 type TSTopLevelDeclaration = ts.InterfaceDeclaration | ts.EnumDeclaration | ts.ClassDeclaration | ts.TypeAliasDeclaration | ts.FunctionDeclaration | ts.ModuleDeclaration;
 type TSTopLevelDeclare = TSTopLevelDeclaration | ts.VariableStatement;
 
-function isDeclaration(a:TSTopLevelDeclare): a is TSTopLevelDeclaration {
+function isDeclaration(a: TSTopLevelDeclare): a is TSTopLevelDeclaration {
 	return (
 		a.kind === ts.SyntaxKind.InterfaceDeclaration
 		|| a.kind === ts.SyntaxKind.EnumDeclaration
@@ -65,7 +64,7 @@ function isDeclaration(a:TSTopLevelDeclare): a is TSTopLevelDeclaration {
 	);
 }
 
-function visitTopLevelDeclarations(sourceFile:ts.SourceFile, visitor:(node:TSTopLevelDeclare)=>boolean): void {
+function visitTopLevelDeclarations(sourceFile: ts.SourceFile, visitor: (node: TSTopLevelDeclare) => boolean): void {
 	let stop = false;
 
 	let visit = (node: ts.Node): void => {
@@ -101,8 +100,8 @@ function visitTopLevelDeclarations(sourceFile:ts.SourceFile, visitor:(node:TSTop
 }
 
 
-function getAllTopLevelDeclarations(sourceFile:ts.SourceFile): TSTopLevelDeclare[] {
-	let all:TSTopLevelDeclare[] = [];
+function getAllTopLevelDeclarations(sourceFile: ts.SourceFile): TSTopLevelDeclare[] {
+	let all: TSTopLevelDeclare[] = [];
 	visitTopLevelDeclarations(sourceFile, (node) => {
 		if (node.kind === ts.SyntaxKind.InterfaceDeclaration || node.kind === ts.SyntaxKind.ClassDeclaration || node.kind === ts.SyntaxKind.ModuleDeclaration) {
 			let interfaceDeclaration = <ts.InterfaceDeclaration>node;
@@ -129,8 +128,8 @@ function getAllTopLevelDeclarations(sourceFile:ts.SourceFile): TSTopLevelDeclare
 }
 
 
-function getTopLevelDeclaration(sourceFile:ts.SourceFile, typeName:string): TSTopLevelDeclare {
-	let result:TSTopLevelDeclare = null;
+function getTopLevelDeclaration(sourceFile: ts.SourceFile, typeName: string): TSTopLevelDeclare {
+	let result: TSTopLevelDeclare = null;
 	visitTopLevelDeclarations(sourceFile, (node) => {
 		if (isDeclaration(node)) {
 			if (node.name.text === typeName) {
@@ -150,12 +149,12 @@ function getTopLevelDeclaration(sourceFile:ts.SourceFile, typeName:string): TSTo
 }
 
 
-function getNodeText(sourceFile:ts.SourceFile, node:{pos:number; end:number;}): string {
+function getNodeText(sourceFile: ts.SourceFile, node: { pos: number; end: number; }): string {
 	return sourceFile.getFullText().substring(node.pos, node.end);
 }
 
 
-function getMassagedTopLevelDeclarationText(sourceFile:ts.SourceFile, declaration: TSTopLevelDeclare): string {
+function getMassagedTopLevelDeclarationText(sourceFile: ts.SourceFile, declaration: TSTopLevelDeclare): string {
 	let result = getNodeText(sourceFile, declaration);
 	// if (result.indexOf('MonacoWorker') >= 0) {
 	// 	console.log('here!');
@@ -164,7 +163,7 @@ function getMassagedTopLevelDeclarationText(sourceFile:ts.SourceFile, declaratio
 	if (declaration.kind === ts.SyntaxKind.InterfaceDeclaration || declaration.kind === ts.SyntaxKind.ClassDeclaration) {
 		let interfaceDeclaration = <ts.InterfaceDeclaration | ts.ClassDeclaration>declaration;
 
-		let members:ts.NodeArray<ts.Node> = interfaceDeclaration.members;
+		let members: ts.NodeArray<ts.Node> = interfaceDeclaration.members;
 		members.forEach((member) => {
 			try {
 				let memberText = getNodeText(sourceFile, member);
@@ -183,24 +182,21 @@ function getMassagedTopLevelDeclarationText(sourceFile:ts.SourceFile, declaratio
 	return result;
 }
 
-function format(text:string): string {
-	let options = getDefaultOptions();
+function format(text: string): string {
 
 	// Parse the source text
 	let sourceFile = ts.createSourceFile('file.ts', text, ts.ScriptTarget.Latest, /*setParentPointers*/ true);
 
 	// Get the formatting edits on the input sources
-	let edits = (<any>ts).formatting.formatDocument(sourceFile, getRuleProvider(options), options);
+	let edits = (<any>ts).formatting.formatDocument(sourceFile, getRuleProvider(tsfmt), tsfmt);
 
 	// Apply the edits on the input code
 	return applyEdits(text, edits);
 
-	function getRuleProvider(options: ts.FormatCodeOptions) {
+	function getRuleProvider(options: ts.FormatCodeSettings) {
 		// Share this between multiple formatters using the same options.
 		// This represents the bulk of the space the formatter uses.
-		let ruleProvider = new (<any>ts).formatting.RulesProvider();
-		ruleProvider.ensureUpToDate(options);
-		return ruleProvider;
+		return (ts as any).formatting.getFormatContext(options);
 	}
 
 	function applyEdits(text: string, edits: ts.TextChange[]): string {
@@ -214,33 +210,12 @@ function format(text:string): string {
 		}
 		return result;
 	}
-
-	function getDefaultOptions(): ts.FormatCodeOptions {
-		return {
-			IndentSize: 4,
-			TabSize: 4,
-			NewLineCharacter: '\r\n',
-			ConvertTabsToSpaces: true,
-			IndentStyle: ts.IndentStyle.Block,
-
-			InsertSpaceAfterCommaDelimiter: true,
-			InsertSpaceAfterSemicolonInForStatements: true,
-			InsertSpaceBeforeAndAfterBinaryOperators: true,
-			InsertSpaceAfterKeywordsInControlFlowStatements: true,
-			InsertSpaceAfterFunctionKeywordForAnonymousFunctions: false,
-			InsertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis: false,
-			InsertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets: false,
-			InsertSpaceAfterOpeningAndBeforeClosingTemplateStringBraces: true,
-			PlaceOpenBraceOnNewLineForFunctions: false,
-			PlaceOpenBraceOnNewLineForControlBlocks: false,
-		};
-	}
 }
 
-function createReplacer(data:string): (str:string)=>string {
+function createReplacer(data: string): (str: string) => string {
 	data = data || '';
 	let rawDirectives = data.split(';');
-	let directives: [RegExp,string][] = [];
+	let directives: [RegExp, string][] = [];
 	rawDirectives.forEach((rawDirective) => {
 		if (rawDirective.length === 0) {
 			return;
@@ -254,7 +229,7 @@ function createReplacer(data:string): (str:string)=>string {
 		directives.push([new RegExp(findStr, 'g'), replaceStr]);
 	});
 
-	return (str:string)=> {
+	return (str: string) => {
 		for (let i = 0; i < directives.length; i++) {
 			str = str.replace(directives[i][0], directives[i][1]);
 		}
@@ -262,10 +237,11 @@ function createReplacer(data:string): (str:string)=>string {
 	};
 }
 
-function generateDeclarationFile(out:string, recipe:string): string {
-	let lines = recipe.split(/\r\n|\n|\r/);
-	let result = [];
+function generateDeclarationFile(out: string, inputFiles: { [file: string]: string; }, recipe: string): string {
+	const endl = /\r\n/.test(recipe) ? '\r\n' : '\n';
 
+	let lines = recipe.split(endl);
+	let result = [];
 
 	lines.forEach(line => {
 
@@ -273,7 +249,7 @@ function generateDeclarationFile(out:string, recipe:string): string {
 		if (m1) {
 			CURRENT_PROCESSING_RULE = line;
 			let moduleId = m1[1];
-			let sourceFile = getSourceFile(out, moduleId);
+			let sourceFile = getSourceFile(out, inputFiles, moduleId);
 			if (!sourceFile) {
 				return;
 			}
@@ -300,7 +276,7 @@ function generateDeclarationFile(out:string, recipe:string): string {
 		if (m2) {
 			CURRENT_PROCESSING_RULE = line;
 			let moduleId = m2[1];
-			let sourceFile = getSourceFile(out, moduleId);
+			let sourceFile = getSourceFile(out, inputFiles, moduleId);
 			if (!sourceFile) {
 				return;
 			}
@@ -308,7 +284,7 @@ function generateDeclarationFile(out:string, recipe:string): string {
 			let replacer = createReplacer(m2[2]);
 
 			let typeNames = m2[3].split(/,/);
-			let typesToExcludeMap: {[typeName:string]:boolean;} = {};
+			let typesToExcludeMap: { [typeName: string]: boolean; } = {};
 			let typesToExcludeArr: string[] = [];
 			typeNames.forEach((typeName) => {
 				typeName = typeName.trim();
@@ -341,18 +317,17 @@ function generateDeclarationFile(out:string, recipe:string): string {
 		result.push(line);
 	});
 
-	let resultTxt = result.join('\n');
+	let resultTxt = result.join(endl);
 	resultTxt = resultTxt.replace(/\bURI\b/g, 'Uri');
 	resultTxt = resultTxt.replace(/\bEvent</g, 'IEvent<');
 	resultTxt = resultTxt.replace(/\bTPromise</g, 'Promise<');
 
 	resultTxt = format(resultTxt);
 
-	resultTxt = resultTxt.replace(/\r\n/g, '\n');
 	return resultTxt;
 }
 
-export function getFilesToWatch(out:string): string[] {
+export function getFilesToWatch(out: string): string[] {
 	let recipe = fs.readFileSync(RECIPE_PATH).toString();
 	let lines = recipe.split(/\r\n|\n|\r/);
 	let result = [];
@@ -383,20 +358,24 @@ export interface IMonacoDeclarationResult {
 	isTheSame: boolean;
 }
 
-export function run(out:string): IMonacoDeclarationResult {
+export function run(out: string, inputFiles: { [file: string]: string; }): IMonacoDeclarationResult {
 	log('Starting monaco.d.ts generation');
 	SOURCE_FILE_MAP = {};
 
 	let recipe = fs.readFileSync(RECIPE_PATH).toString();
-	let result = generateDeclarationFile(out, recipe);
+	let result = generateDeclarationFile(out, inputFiles, recipe);
 
 	let currentContent = fs.readFileSync(DECLARATION_PATH).toString();
 	log('Finished monaco.d.ts generation');
 
+	const one = currentContent.replace(/\r\n/gm, '\n');
+	const other = result.replace(/\r\n/gm, '\n');
+	const isTheSame = one === other;
+
 	return {
 		content: result,
 		filePath: DECLARATION_PATH,
-		isTheSame: currentContent === result
+		isTheSame
 	};
 }
 

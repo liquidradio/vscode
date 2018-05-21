@@ -39,7 +39,7 @@ export class BracketElectricCharacterSupport {
 	}
 
 	public getElectricCharacters(): string[] {
-		var result: string[] = [];
+		let result: string[] = [];
 
 		if (this._richEditBrackets) {
 			for (let i = 0, len = this._richEditBrackets.brackets.length; i < len; i++) {
@@ -91,6 +91,12 @@ export class BracketElectricCharacterSupport {
 
 		let isOpen = this._richEditBrackets.textIsOpenBracket[bracketText];
 		if (isOpen) {
+			return null;
+		}
+
+		let textBeforeBracket = text.substring(0, r.startColumn - 1);
+		if (!/^\s*$/.test(textBeforeBracket)) {
+			// There is other text on the line before the bracket
 			return null;
 		}
 

@@ -16,7 +16,7 @@ suite('CancellationToken', function () {
 
 	test('cancel before token', function (done) {
 
-		var source = new CancellationTokenSource();
+		const source = new CancellationTokenSource();
 		assert.equal(source.token.isCancellationRequested, false);
 		source.cancel();
 
@@ -81,5 +81,19 @@ suite('CancellationToken', function () {
 		source.cancel();
 		token = source.token;
 		assert.ok(token === source.token); // doesn't change on get
+	});
+
+	test('dispose calls no listeners', function () {
+
+		let count = 0;
+
+		let source = new CancellationTokenSource();
+		source.token.onCancellationRequested(function () {
+			count += 1;
+		});
+
+		source.dispose();
+		source.cancel();
+		assert.equal(count, 0);
 	});
 });

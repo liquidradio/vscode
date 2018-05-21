@@ -9,14 +9,14 @@ import { IMouseEvent } from 'vs/base/browser/mouseEvent';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { TPromise, Promise } from 'vs/base/common/winjs.base';
 import { IDataSource, ITree, IRenderer } from 'vs/base/parts/tree/browser/tree';
-import { DefaultController } from 'vs/base/parts/tree/browser/treeDefaults';
 import { Action } from 'vs/base/common/actions';
 import { IExtensionDependencies, IExtensionsWorkbenchService } from 'vs/workbench/parts/extensions/common/extensions';
 import { once } from 'vs/base/common/event';
 import { domEvent } from 'vs/base/browser/event';
-import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { KeyMod, KeyCode } from 'vs/base/common/keyCodes';
+import { WorkbenchTreeController } from 'vs/platform/list/browser/listService';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 export interface IExtensionTemplateData {
 	icon: HTMLImageElement;
@@ -56,10 +56,10 @@ export class DataSource implements IDataSource {
 
 export class Renderer implements IRenderer {
 
-	private static EXTENSION_TEMPLATE_ID = 'extension-template';
-	private static UNKNOWN_EXTENSION_TEMPLATE_ID = 'unknown-extension-template';
+	private static readonly EXTENSION_TEMPLATE_ID = 'extension-template';
+	private static readonly UNKNOWN_EXTENSION_TEMPLATE_ID = 'unknown-extension-template';
 
-	constructor( @IInstantiationService private instantiationService: IInstantiationService) {
+	constructor(@IInstantiationService private instantiationService: IInstantiationService) {
 	}
 
 	public getHeight(tree: ITree, element: IExtensionDependencies): number {
@@ -93,10 +93,10 @@ export class Renderer implements IRenderer {
 			e.stopPropagation();
 			e.preventDefault();
 		})];
-		var identifier = dom.append(header, dom.$('span.identifier'));
+		const identifier = dom.append(header, dom.$('span.identifier'));
 
 		const footer = dom.append(details, dom.$('.footer'));
-		var author = dom.append(footer, dom.$('.author'));
+		const author = dom.append(footer, dom.$('.author'));
 		return {
 			icon,
 			name,
@@ -141,7 +141,7 @@ export class Renderer implements IRenderer {
 		}
 
 		data.name.textContent = extension.displayName;
-		data.identifier.textContent = extension.identifier;
+		data.identifier.textContent = extension.id;
 		data.author.textContent = extension.publisherDisplayName;
 		data.extensionDependencies = element;
 	}
@@ -157,19 +157,24 @@ export class Renderer implements IRenderer {
 	}
 }
 
-export class Controller extends DefaultController {
+export class Controller extends WorkbenchTreeController {
 
-	constructor( @IExtensionsWorkbenchService private extensionsWorkdbenchService: IExtensionsWorkbenchService) {
-		super();
+	constructor(
+		@IExtensionsWorkbenchService private extensionsWorkdbenchService: IExtensionsWorkbenchService,
+		@IConfigurationService configurationService: IConfigurationService
+	) {
+		super({}, configurationService);
+
+		// TODO@Sandeep this should be a command
 		this.downKeyBindingDispatcher.set(KeyMod.CtrlCmd | KeyCode.Enter, (tree: ITree, event: any) => this.openExtension(tree, true));
 	}
 
 	protected onLeftClick(tree: ITree, element: IExtensionDependencies, event: IMouseEvent): boolean {
-		let currentFoucssed = tree.getFocus();
+		let currentFocused = tree.getFocus();
 		if (super.onLeftClick(tree, element, event)) {
 			if (element.dependent === null) {
-				if (currentFoucssed) {
-					tree.setFocus(currentFoucssed);
+				if (currentFocused) {
+					tree.setFocus(currentFocused);
 				} else {
 					tree.focusFirst();
 				}
@@ -179,14 +184,7 @@ export class Controller extends DefaultController {
 		return false;
 	}
 
-	protected onEnter(tree: ITree, event: IKeyboardEvent): boolean {
-		if (super.onEnter(tree, event)) {
-			return this.openExtension(tree, false);
-		}
-		return false;
-	}
-
-	private openExtension(tree: ITree, sideByside: boolean): boolean {
+	public openExtension(tree: ITree, sideByside: boolean): boolean {
 		const element: IExtensionDependencies = tree.getFocus();
 		if (element.extension) {
 			this.extensionsWorkdbenchService.open(element.extension, sideByside);
@@ -200,7 +198,7 @@ class OpenExtensionAction extends Action {
 
 	private _extensionDependencies: IExtensionDependencies;
 
-	constructor( @IExtensionsWorkbenchService private extensionsWorkdbenchService: IExtensionsWorkbenchService) {
+	constructor(@IExtensionsWorkbenchService private extensionsWorkdbenchService: IExtensionsWorkbenchService) {
 		super('extensions.action.openDependency', '');
 	}
 

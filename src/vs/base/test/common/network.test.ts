@@ -9,7 +9,7 @@ import URI from 'vs/base/common/uri';
 
 function assertUrl(raw: string, scheme: string, domain: string, port: string, path: string, queryString: string, fragmentId: string): void {
 	// check for equivalent behaviour
-	var uri = URI.parse(raw);
+	const uri = URI.parse(raw);
 	assert.equal(uri.scheme, scheme);
 	assert.equal(uri.authority, port ? domain + ':' + port : domain);
 	assert.equal(uri.path, path);
@@ -36,7 +36,7 @@ suite('Network', () => {
 		);
 
 		assertUrl('http://www.test.com:8000#hash',
-			'http', 'www.test.com', '8000', '', '', 'hash'
+			'http', 'www.test.com', '8000', '/', '', 'hash'
 		);
 
 		assertUrl('http://www.test.com/#hash',
@@ -44,7 +44,7 @@ suite('Network', () => {
 		);
 
 		assertUrl('http://www.test.com#hash',
-			'http', 'www.test.com', '', '', '', 'hash'
+			'http', 'www.test.com', '', '/', '', 'hash'
 		);
 
 		assertUrl('http://www.test.com:8000/this/that/theother.html',
@@ -56,7 +56,7 @@ suite('Network', () => {
 		);
 
 		assertUrl('http://www.test.com:8000',
-			'http', 'www.test.com', '8000', '', '', ''
+			'http', 'www.test.com', '8000', '/', '', ''
 		);
 
 		assertUrl('http://www.test.com/',
